@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<qualifiedTypeNameHistroy>
+<fullyQualifiedTypeName name="edu.citadel.cprl.Token"/>
+<fullyQualifiedTypeName name="edu.citadel.cprl.SymbolUtil"/>
+<fullyQualifiedTypeName name="edu.citadel.compiler.Position"/>
+<fullyQualifiedTypeName name="edu.citadel.compiler.ConstraintException"/>
+<fullyQualifiedTypeName name="edu.citadel.compiler.ErrorHandler"/>
+</qualifiedTypeNameHistroy>

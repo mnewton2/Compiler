@@ -1,0 +1,4 @@
+#Tue Mar 08 22:09:18 EST 2016
+__DEFAULT__=false
+org.eclipse.help.ui.localSearch.master=true
+expression=flexformatter

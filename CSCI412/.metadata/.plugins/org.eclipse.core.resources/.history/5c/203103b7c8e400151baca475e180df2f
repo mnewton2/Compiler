@@ -1,0 +1,1086 @@
+package edu.citadel.cprl;
+
+
+import edu.citadel.compiler.Position;
+import edu.citadel.compiler.ParserException;
+import edu.citadel.compiler.ErrorHandler;
+import edu.citadel.compiler.InternalCompilerException;
+
+import java.io.IOException;
+
+
+/**
+ * This class uses recursive descent to perform syntax analysis of
+ * the CPRL source language.
+ */
+public class Parser
+  {
+    private Scanner scanner;
+    private IdTable idTable;
+
+
+    /**
+     * Construct a parser with the specified scanner.
+     */
+    public Parser(Scanner scanner)
+      {
+        this.scanner = scanner;
+        idTable = new IdTable();
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>program = ( declarativePart )? statementPart "." .</code>
+     */
+    public void parseProgram() throws IOException
+      {
+        try
+          {
+            if (scanner.getSymbol() == Symbol.declareRW)
+                parseDeclarativePart();
+
+            parseStatementPart();
+            match(Symbol.dot);
+            match(Symbol.EOF);
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>declarativePart = "declare" initialDecls subprogramDecls .</code>
+     */
+    public void parseDeclarativePart() throws IOException
+      {
+        try
+          {
+            match(Symbol.declareRW);
+            parseInitialDecls();
+            parseSubprogramDecls();
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>initialDecls = ( initialDecl )* .</code>
+     */
+    public void parseInitialDecls() throws IOException
+      {
+        while (SymbolUtil.isInitialDeclStarter(scanner.getSymbol()))
+            parseInitialDecl();
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>initialDecl = constDecl | arrayTypeDecl | varDecl .</code>
+     */
+    public void parseInitialDecl() throws IOException
+      {
+    	try
+    	{
+    		if(scanner.getSymbol() == Symbol.constRW)
+        		parseConstDecl();
+        	else if(scanner.getSymbol() == Symbol.varRW)
+        		parseVarDecl();
+        	else if(scanner.getSymbol() == Symbol.typeRW)
+        		parseArrayTypeDecl();
+        	else
+        		throw error("Invalid initial declaration.");
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>constDecl = "const" constId ":=" literal ";" .</code>
+     */
+    public void parseConstDecl() throws IOException
+      {
+    	try 
+    	{
+			match(Symbol.constRW);
+			check(Symbol.identifier);
+			idTable.add(scanner.getToken(), IdType.constantId);
+			match(Symbol.assign);
+			parseLiteral();
+			match(Symbol.semicolon);
+		} 
+    	catch (ParserException e) 
+    	{
+			ErrorHandler.getInstance().reportError(e);
+			exit();
+		}
+    	
+      }
+
+
+    /**
+     * Parse the following grammar rules:<br>
+     * <code>literal = intLiteral | charLiteral | stringLiteral | booleanLiteral .
+     *    booleanLiteral = "true" | "false" .</code>
+     */
+    public void parseLiteral() throws IOException
+      {
+        try
+          {
+            if (SymbolUtil.isLiteral(scanner.getSymbol()))
+                matchCurrentSymbol();
+            else
+                throw error("Invalid literal expression");
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>varDecl = "var" identifiers ":" typeName ";" .</code>
+     */
+    public void parseVarDecl() throws IOException
+      {
+    	try
+    	{
+    		match(Symbol.varRW);
+    		parseIdentifiers();
+    		match(Symbol.colon);
+    		parseTypeName();
+    		match(Symbol.semicolon);
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+            exit();    		
+    	}
+
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>identifiers = identifier ( "," identifier )* .</code>
+     */
+    public void parseIdentifiers() throws IOException
+      {
+        try
+          {
+            check(Symbol.identifier);
+            idTable.add(scanner.getToken(), IdType.variableId);
+            matchCurrentSymbol();
+
+            while (scanner.getSymbol() == Symbol.comma)
+              {
+                matchCurrentSymbol();      // match comma
+                check(Symbol.identifier);
+                idTable.add(scanner.getToken(), IdType.variableId);
+                matchCurrentSymbol();
+              }
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>arrayTypeDecl = "type" typeId "=" "array" "[" intConstValue "]" "of" typeName ";" .</code>
+     */
+    public void parseArrayTypeDecl() throws IOException
+      {
+    	try
+    	{
+    		match(Symbol.typeRW);
+    		check(Symbol.identifier);
+			idTable.add(scanner.getToken(), IdType.arrayTypeId);
+			match(Symbol.equals);
+			match(Symbol.arrayRW);
+			match(Symbol.leftBracket);
+			//parse int constant value
+			match(Symbol.rightBracket);
+			match(Symbol.ofRW);
+			parseTypeName();
+			match(Symbol.semicolon);
+    		
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+            exit();    		
+    	}
+
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>typeName = "Integer" | "Boolean" | "Char" | typeId .</code>
+     */
+    public void parseTypeName() throws IOException
+      {
+        try
+          {
+            if (scanner.getSymbol() == Symbol.IntegerRW)
+                matchCurrentSymbol();
+            else if (scanner.getSymbol() == Symbol.BooleanRW)
+                matchCurrentSymbol();
+            else if (scanner.getSymbol() == Symbol.CharRW)
+                matchCurrentSymbol();
+            else if (scanner.getSymbol() == Symbol.identifier)
+              {
+                IdType idType = idTable.get(scanner.getToken());
+
+                if (idType != null)
+                  {
+                    if (idType == IdType.arrayTypeId)
+                        matchCurrentSymbol();
+                    else
+                      {
+                        throw error("Identifier \"" + scanner.getToken()
+                                  + "\" is not a valid type name.");
+                      }
+                  }
+                else
+                    throw error("Identifier \"" + scanner.getToken()
+                          + "\" has not been declared.");
+              }
+            else
+                throw error("Invalid type name");
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>subprogramDecls = ( subprogramDecl )* .</code>
+     */
+    public void parseSubprogramDecls() throws IOException
+      {
+    	while (SymbolUtil.isSubprogramDeclStarter(scanner.getSymbol()))
+    	{
+    		parseSubprogramDecl();
+        }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>subprogramDecl = procedureDecl | functionDecl .</code>
+     */
+    public void parseSubprogramDecl() throws IOException
+      {
+    	try
+    	{
+    		if(scanner.getSymbol() == Symbol.procedureRW)
+        		parseProcedureDecl();
+        	else if(scanner.getSymbol() == Symbol.functionRW)
+        		parseFunctionDecl();
+        	else
+        		throw error("Invalid declaration of subprogram.");
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>procedureDecl = "procedure" procId ( formalParameters )?
+     *      "is" initialDecls statementPart procId ";" .</code>
+     */
+    public void parseProcedureDecl() throws IOException
+      {
+        try
+          {
+            match(Symbol.procedureRW);
+
+            check(Symbol.identifier);
+            idTable.add(scanner.getToken(), IdType.procedureId);
+            matchCurrentSymbol();
+            idTable.openScope();
+
+            if (scanner.getSymbol() == Symbol.leftParen)
+                parseFormalParameters();
+
+            match(Symbol.isRW);
+
+            parseInitialDecls();
+            parseStatementPart();
+            match(Symbol.identifier);
+            match(Symbol.semicolon);
+
+            idTable.closeScope();
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>functionDecl = "function" funcId ( formalParameters )? "return" typeName
+     *       "is" initialDecls statementPart funcId ";" .</code>
+     */
+    public void parseFunctionDecl() throws IOException
+      {
+    	try
+    	{
+    		match(Symbol.functionRW);
+    		check(Symbol.identifier);
+    		idTable.add(scanner.getToken(), IdType.functionId);
+    		matchCurrentSymbol();
+    		idTable.openScope();
+    		
+    		if(scanner.getSymbol() == Symbol.leftParen)
+    			parseFormalParameters();
+    		
+    		match(Symbol.returnRW);
+    		parseTypeName();
+    		match(Symbol.isRW);
+    		parseInitialDecls();
+    		parseStatementPart();
+    		match(Symbol.identifier);
+    		match(Symbol.semicolon);
+    		
+    		idTable.closeScope();
+    		
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>formalParameters = "(" parameterDecl ( "," parameterDecl )* ")" .</code>
+     */
+    public void parseFormalParameters() throws IOException
+      {
+    	try 
+    	{
+			match(Symbol.leftParen);
+			parseParameterDecl();
+			while(scanner.getSymbol() == Symbol.comma)
+			{
+				matchCurrentSymbol();
+				parseParameterDecl();
+			}
+			match(Symbol.rightParen);
+		} 
+    	catch (ParserException e) 
+    	{
+			ErrorHandler.getInstance().reportError(e);
+			exit();
+		}
+    	
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>parameterDecl = ( "var" )? paramId ":" typeName .</code>
+     */
+    public void parseParameterDecl() throws IOException
+      {
+    	try
+    	{
+    		if(scanner.getSymbol() == Symbol.varRW)
+        	{
+        		matchCurrentSymbol();
+        	}
+    		check(Symbol.identifier);
+        	idTable.add(scanner.getToken(), IdType.variableId);
+        	match(Symbol.colon);
+        	parseTypeName();      	
+    	
+    	}
+    	 catch (ParserException e)
+        {
+          ErrorHandler.getInstance().reportError(e);
+          exit();
+        } 
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>statementPart = "begin" statements "end" .</code>
+     */
+    public void parseStatementPart() throws IOException
+      {
+        try
+          {
+            match(Symbol.beginRW);
+            parseStatements();
+            match(Symbol.endRW);
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>statements = ( statement )* .</code>
+     */
+    public void parseStatements() throws IOException
+      {
+    	while(SymbolUtil.isStmtStarter(scanner.getSymbol()))
+    		parseStatement();
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>statement = assignmentStmt | ifStmt | loopStmt | exitStmt | readStmt
+     *                 | writeStmt | writelnStmt | procedureCallStmt | returnStmt .</code>
+     */
+    public void parseStatement() throws IOException
+      {
+    	try
+    	{
+    		Symbol symbol = scanner.getSymbol();
+
+            if (symbol == Symbol.identifier)
+            {
+                IdType idType = idTable.get(scanner.getToken());
+
+                if (idType != null)
+                {
+                    if (idType == IdType.variableId)
+                        parseAssignmentStmt();
+                    else if (idType == IdType.procedureId)
+                        parseProcedureCallStmt();
+                    else
+                    {
+                        throw error("Identifier \"" + scanner.getToken()
+                                  + "\" cannot start a statement.");
+                    }
+                }
+                else
+                    throw error("Identifier \"" + scanner.getToken()
+                              + "\" has not been declared.");
+    		}
+    		else if(scanner.getSymbol() == Symbol.ifRW)
+    			parseIfStmt();
+    		else if(scanner.getSymbol() == Symbol.loopRW)
+    			parseLoopStmt();
+    		else if(scanner.getSymbol() == Symbol.exitRW)
+    			parseExitStmt();
+    		else if(scanner.getSymbol() == Symbol.readRW)
+    			parseReadStmt();
+    		else if(scanner.getSymbol() == Symbol.writeRW)
+    			parseWriteStmt();
+    		else if(scanner.getSymbol() == Symbol.writelnRW)
+    			parseWritelnStmt();
+    		else if(scanner.getSymbol() == Symbol.returnRW)
+    			parseReturnStmt();
+    		else
+    			throw error("Invalid statement.");
+    		
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>assignmentStmt = variable ":=" expression ";" .</code>
+     */
+    public void parseAssignmentStmt() throws IOException
+      {
+    	try
+    	{
+    		parseVariable();
+    		match(Symbol.assign);
+    		parseExpression();
+    		match(Symbol.semicolon);
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>ifStmt = "if" booleanExpr "then" statements
+     *              ( "elsif" booleanExpr "then" statements )*
+     *              ( "else" statements )? "end" "if" ";" .
+     */
+    public void parseIfStmt() throws IOException
+      {
+    	try
+    	{
+    		match(Symbol.ifRW);
+    		parseExpression();
+    		match(Symbol.thenRW);
+    		parseStatements();
+    		
+    		while(scanner.getSymbol() == Symbol.elsifRW)
+    		{
+    			matchCurrentSymbol();
+    			parseExpression();
+    			match(Symbol.thenRW);
+    			parseStatements();
+    		}
+    		
+    		if(scanner.getSymbol() == Symbol.elseRW)
+    			parseStatements();
+    		match(Symbol.endRW);
+    		match(Symbol.ifRW);
+    		match(Symbol.semicolon);    		
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>loopStmt = ( "while" booleanExpr )? "loop"
+     *                  statements "end" "loop" ";" .</code>
+     */
+    public void parseLoopStmt() throws IOException
+      {
+    	try
+    	{
+    		if(scanner.getSymbol() == Symbol.whileRW)
+    			parseExpression();
+    		
+    		match(Symbol.loopRW);
+    		parseStatements();
+    		match(Symbol.endRW);
+    		match(Symbol.loopRW);
+    		match(Symbol.semicolon);
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>exitStmt = "exit" ( "when" booleanExpr )? ";" .</code>
+     */
+    public void parseExitStmt() throws IOException
+      {
+    	try
+    	{
+    		match(Symbol.exitRW);
+    		
+    		if(scanner.getSymbol() == Symbol.whenRW)
+    			parseExpression();
+    		
+    		match(Symbol.semicolon);
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>readStmt = "read" variable ";" .</code>
+     */
+    public void parseReadStmt() throws IOException
+      {
+    	try
+    	{
+    		match(Symbol.readRW);
+    		parseVariable();
+    		match(Symbol.semicolon);
+    		
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>writeStmt = "write" expression ( "," expression )* ";" .</code>
+     */
+    public void parseWriteStmt() throws IOException
+      {
+    	try
+    	{
+    		match(Symbol.writeRW);
+    		parseExpression();
+    		
+    		while(scanner.getSymbol() == Symbol.comma)
+    			parseExpression();
+    		
+    		match(Symbol.semicolon);
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>writelnStmt = "writeln" ( expression ( "," expression )* )? ";" .</code>
+     */
+    public void parseWritelnStmt() throws IOException
+      {
+        try
+          {
+            match(Symbol.writelnRW);
+
+            if (SymbolUtil.isExprStarter(scanner.getSymbol()))
+              {
+                parseExpression();
+
+                while (scanner.getSymbol() == Symbol.comma)
+                  {
+                    matchCurrentSymbol();
+                    parseExpression();
+                  }
+              }
+
+            match(Symbol.semicolon);
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>procedureCallStmt = procId ( actualParameters )? ";" .</code>
+     */
+    public void parseProcedureCallStmt() throws IOException
+      {
+    	try
+    	{
+    		check(Symbol.identifier);
+    		idTable.add(scanner.getToken(), IdType.procedureId);
+    		matchCurrentSymbol();
+    		
+    		if(scanner.getSymbol() == Symbol.leftParen)
+    			parseActualParameters();
+    		
+    		match(Symbol.semicolon);
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>actualParameters = "(" expression ( "," expression )* ")" .</code>
+     */
+    public void parseActualParameters() throws IOException
+      {
+    	try
+    	{
+    		match(Symbol.leftParen);
+    		parseExpression();
+    		
+    		while(scanner.getSymbol() == Symbol.comma)
+    			parseExpression();
+    		
+    		match(Symbol.rightParen);
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>returnStmt = "return" ( expression )? ";" .</code>
+     */
+    public void parseReturnStmt() throws IOException
+      {
+    	try 
+    	{
+			match(Symbol.returnRW);
+			
+			if(SymbolUtil.isExprStarter(scanner.getSymbol()))
+				parseExpression();
+			
+			match(Symbol.semicolon);
+		} 
+    	catch (ParserException e) 
+    	{
+			ErrorHandler.getInstance().reportError(e);
+			exit();
+		}
+    	
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>variable = ( varId | varParamId | valueParamId ) ( "[" expression "]" )* .</code>
+     */
+    public void parseVariable() throws IOException
+      {
+        try
+          {
+            check(Symbol.identifier);
+            Token token = scanner.getToken();
+            IdType idType = idTable.get(token);
+
+            if (idType != null)
+              {
+                if (idType == IdType.variableId)
+                    matchCurrentSymbol();
+                else
+                    throw error("Identifier \"" + token + "\" is not a variable.");
+              }
+            else
+                throw error("Identifier \"" + token + "\" has not been declared.");
+
+            while (scanner.getSymbol() == Symbol.leftBracket)
+              {
+                matchCurrentSymbol();
+                parseExpression();
+                match(Symbol.rightBracket);
+              }
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rules:<br>
+     * <code>expression = relation ( logicalOp relation )* .<br>
+     *        logicalOp = "and" | "or" .</code>
+     */
+    public void parseExpression() throws IOException
+      {
+        parseRelation();
+
+        while (SymbolUtil.isLogicalOperator(scanner.getSymbol()))
+          {
+            matchCurrentSymbol();
+            parseRelation();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rules:<br>
+     * <code>relation = simpleExpr ( relationalOp simpleExpr )? .<br>
+     *   relationalOp = "=" | "!=" | "<" | "<=" | ">" | ">=" .</code>
+     */
+    public void parseRelation() throws IOException
+      {
+    	parseSimpleExpr();
+    	
+    	if(SymbolUtil.isRelationalOperator(scanner.getSymbol()))
+    	{
+    		matchCurrentSymbol();
+    		parseSimpleExpr();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rules:<br>
+     * <code>simpleExpr = ( addingOp )? term ( addingOp term )* .<br>
+     *       addingOp = "+" | "-" .</code>
+     */
+    public void parseSimpleExpr() throws IOException
+      {
+    	if(SymbolUtil.isAddingOperator(scanner.getSymbol()))
+    		matchCurrentSymbol();
+    	
+    	parseTerm();
+    	
+    	while(SymbolUtil.isAddingOperator(scanner.getSymbol()))
+    	{
+    		matchCurrentSymbol();
+    		parseTerm();
+    	}
+    	
+      }
+
+
+    /**
+     * Parse the following grammar rules:<br>
+     * <code>term = factor ( multiplyingOp factor )* .<br>
+     *       multiplyingOp = "*" | "/" | "mod" .</code>
+     */
+    public void parseTerm() throws IOException
+      {
+    	parseFactor();
+    	
+    	while(SymbolUtil.isMultiplyingOperator(scanner.getSymbol()))
+    	{
+    		matchCurrentSymbol();
+    		parseFactor();
+    	}
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>factor = "not" factor | constValue | namedValue | functionCall
+     *              | "(" expression ")" .</code>
+     */
+    public void parseFactor() throws IOException
+    {
+        try
+          {
+            if (scanner.getSymbol() == Symbol.notRW)
+              {
+                matchCurrentSymbol();
+                parseFactor();
+              }
+            else if (SymbolUtil.isLiteral(scanner.getSymbol()))
+              {
+                // Handle constant literals separately from constant identifiers.
+                parseConstValue();
+              }
+            else if (scanner.getSymbol() == Symbol.identifier)
+              {
+                // Handle identifiers based on whether they are
+                // declared as variables, constants, or functions.
+                Token idToken = scanner.getToken();
+                IdType idType = idTable.get(idToken);
+
+                if (idType != null)
+                  {
+                    if (idType == IdType.constantId)
+                        parseConstValue();
+                    else if (idType == IdType.variableId)
+                        parseNamedValue();
+                    else if (idType == IdType.functionId)
+                        parseFunctionCall();
+                    else
+                        throw internalError("Invalid declaration for identifier \""
+                                          + idToken + "\".");
+                  }
+                else
+                    throw error("Identifier \"" + scanner.getToken()
+                              + "\" has not been declared.");
+              }
+            else if (scanner.getSymbol() == Symbol.leftParen)
+              {
+                matchCurrentSymbol();
+                parseExpression();
+                match(Symbol.rightParen);
+              }
+            else
+                throw error("Invalid expression.");
+          }
+        catch (ParserException e)
+          {
+            ErrorHandler.getInstance().reportError(e);
+            exit();
+          }
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>constValue = literal | constId .</code>
+     */
+    public void parseConstValue() throws IOException
+      {
+    	try
+    	{
+    		if(SymbolUtil.isLiteral(scanner.getSymbol()))
+        		parseLiteral();
+        	else if(scanner.getSymbol() == Symbol.identifier)
+        	{
+        		IdType idType = idTable.get(scanner.getToken());
+        		
+        		if(idType != null)
+        		{
+        			if(idType == IdType.constantId)
+        				matchCurrentSymbol();
+        			else
+        			{
+        				throw error("Identifier \"" + scanner.getToken() + "\" is not a valid contant identifier.");
+        			}
+        		}
+        		else
+        			throw error("Identifier \"" + scanner.getToken() + "\" has not benn declared.");
+        	}
+        	else
+        		throw error("Invalid constant name.");
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+    	
+    		
+    		
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>namedValue = variable .</code>
+     */
+    public void parseNamedValue() throws IOException
+      {
+        parseVariable();
+      }
+
+
+    /**
+     * Parse the following grammar rule:<br>
+     * <code>functionCall = functId ( actualParameters )? .</code>
+     */
+    public void parseFunctionCall() throws IOException
+      {
+    	try
+    	{
+    		check(Symbol.identifier);
+        	idTable.add(scanner.getToken(), IdType.functionId);
+        	
+        	if(scanner.getSymbol() == Symbol.leftParen)
+        		parseActualParameters();
+    	}
+    	catch (ParserException e)
+    	{
+    		ErrorHandler.getInstance().reportError(e);
+    		exit();
+    	}
+    	
+      }
+
+
+    // Utility parsing methods
+
+
+    /**
+     * Check that the current scanner symbol is the expected symbol and throw
+     * a ParserException object if it isn't.  The scanner is not advanced.
+     */
+    private void check(Symbol expectedSymbol) throws ParserException
+      {
+        if (scanner.getSymbol() != expectedSymbol)
+          {
+            String errorMessage = "Expecting \"" + expectedSymbol + "\" but found \""
+                + scanner.getSymbol() + "\" instead.";
+            throw error(errorMessage);
+          }
+      }
+
+
+    private void match(Symbol expectedSymbol) throws IOException, ParserException
+      {
+        if (scanner.getSymbol() == expectedSymbol)
+            scanner.advance();
+        else
+          {
+            String errorMessage = "Expecting \"" + expectedSymbol
+                + "\" but found \"" + scanner.getSymbol() + "\" instead";
+            throw error(errorMessage);
+          }
+      }
+
+
+    private void matchCurrentSymbol() throws IOException
+      {
+        scanner.advance();
+      }
+
+
+    private ParserException error(String message)
+      {
+        Position errorPosition = scanner.getToken().getPosition();
+        return new ParserException(errorPosition, message);
+      }
+
+
+    private InternalCompilerException internalError(String message)
+      {
+        Position errorPosition = scanner.getToken().getPosition();
+        return new InternalCompilerException(errorPosition, message);
+      }
+
+
+    private void exit()
+      {
+        System.out.println("Errors detected -- compilation terminated.");
+        System.out.println();
+        System.exit(-1);
+      }
+  }

@@ -1,0 +1,4 @@
+#Mon Mar 07 19:53:46 EST 2016
+__DEFAULT__=false
+org.eclipse.help.ui.localSearch.master=true
+expression=spacing
